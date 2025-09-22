@@ -1,0 +1,44 @@
+cameras:
+  camera_1:
+    rtsp_url: "rtsp://admin:password@192.168.1.100:554/stream1"
+    name: "Front Door"
+    roi:
+      enabled: true
+      coordinates: [[50, 100], [590, 200], [50, 540], [590, 540]]
+    classes_to_detect: ["person", "car", "truck", "bicycle"]
+  
+  camera_2:
+    rtsp_url: "rtsp://admin:password@192.168.1.101:554/stream1"
+    name: "Back Yard"
+    roi:
+      enabled: true
+      coordinates: [[0, 0], [640, 0], [640, 400], [0, 400]]
+    classes_to_detect: ["person", "dog", "cat", "bird"]
+    
+  camera_3:
+    rtsp_url: "rtsp://admin:password@192.168.1.102:554/stream1"
+    name: "Parking"
+    roi:
+      enabled: false
+      coordinates: []
+    classes_to_detect: ["car", "truck", "bus", "motorcycle"]
+
+  camera_4:
+    rtsp_url: "rtsp://admin:password@192.168.1.103:554/stream1"
+    name: "General Area"
+    roi:
+      enabled: false
+      coordinates: []
+    classes_to_detect: []
+
+# Batch processing settings
+batch_size: 4
+batch_timeout: 0.1
+target_fps: 30
+frame_queue_size: 100
+
+# Model settings
+model_path: "./models/yolov8l.pt"
+confidence_threshold: 0.5
+device: "cuda"
+model_input_size: [640, 640]
