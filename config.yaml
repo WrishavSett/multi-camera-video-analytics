@@ -41,7 +41,7 @@ frame_queue_size: 100
 model_path: "./models/yolov8s.pt"
 confidence_threshold: 0.5
 device: "cpu"  # or "cuda" for GPU
-model_input_size: [640, 640]
+model_input_size: [480, 480]
 
 # Visualization settings
 visualization:
