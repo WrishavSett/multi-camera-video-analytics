@@ -5,12 +5,14 @@ from ultralytics import YOLO
 import numpy as np
 import cv2
 import logging
+import os
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class BatchConsumer:
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="config.yaml", visualize_mode=None):
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
@@ -22,6 +24,19 @@ class BatchConsumer:
         self.confidence_threshold = self.config['confidence_threshold']
         self.model_input_size = tuple(self.config['model_input_size'])
         
+        # Visualization settings
+        self.visualize_mode = visualize_mode  # None, 'display', or 'save'
+        self.viz_config = self.config.get('visualization', {})
+        self.video_config = self.config.get('video_save', {})
+        self.video_writers = {}
+        
+        # Create output directory for saved videos
+        if self.visualize_mode == 'save':
+            output_dir = self.video_config.get('output_dir', './output_videos')
+            os.makedirs(output_dir, exist_ok=True)
+            self.output_dir = output_dir
+            logger.info(f"Video output directory: {self.output_dir}")
+        
         # Create class name to ID mapping for efficient filtering
         self.class_name_to_id = {name: idx for idx, name in self.model.names.items()}
         self.class_id_to_name = self.model.names
@@ -32,6 +47,7 @@ class BatchConsumer:
         
         logger.info(f"Model loaded on {self.device}")
         logger.info(f"Model input size: {self.model_input_size}")
+        logger.info(f"Visualization mode: {self.visualize_mode if self.visualize_mode else 'disabled'}")
         logger.info(f"Available classes: {list(self.class_name_to_id.keys())}")
     
     def start(self, producer):
@@ -47,6 +63,10 @@ class BatchConsumer:
             if self._should_process_batch():
                 self._process_batch()
             
+            # Handle OpenCV window events if displaying
+            if self.visualize_mode == 'display':
+                cv2.waitKey(1)
+            
             time.sleep(0.001)  # Small sleep to prevent busy waiting
     
     def stop(self):
@@ -56,6 +76,17 @@ class BatchConsumer:
         # Process any remaining frames
         if self.pending_frames:
             self._process_batch()
+        
+        # Close all video writers
+        if self.visualize_mode == 'save':
+            for writer in self.video_writers.values():
+                writer.release()
+            logger.info("All video writers closed")
+        
+        # Close all OpenCV windows
+        if self.visualize_mode == 'display':
+            cv2.destroyAllWindows()
+            logger.info("All display windows closed")
     
     def _collect_frames(self):
         """Collect frames from producer"""
@@ -136,6 +167,87 @@ class BatchConsumer:
         
         return filtered_detections
     
+    def _draw_roi_on_frame(self, frame, roi_config):
+        """Draw ROI polygon on frame"""
+        if not roi_config['enabled'] or not roi_config['coordinates']:
+            return frame
+        
+        if not self.viz_config.get('show_roi', True):
+            return frame
+        
+        roi_points = np.array(roi_config['coordinates'], dtype=np.int32)
+        roi_color = tuple(self.viz_config.get('roi_color', [255, 0, 0]))
+        roi_thickness = self.viz_config.get('roi_thickness', 2)
+        
+        # Draw ROI polygon
+        cv2.polylines(frame, [roi_points], True, roi_color, roi_thickness)
+        
+        return frame
+    
+    def _visualize_detections(self, frame, detections, camera_name, roi_config):
+        """Draw bounding boxes and labels on frame"""
+        vis_frame = frame.copy()
+        
+        # Draw ROI if enabled
+        vis_frame = self._draw_roi_on_frame(vis_frame, roi_config)
+        
+        # Get visualization colors
+        box_color = tuple(self.viz_config.get('box_color', [0, 255, 0]))
+        text_color = tuple(self.viz_config.get('text_color', [0, 255, 0]))
+        box_thickness = self.viz_config.get('box_thickness', 2)
+        text_thickness = self.viz_config.get('text_thickness', 2)
+        font_scale = self.viz_config.get('font_scale', 0.6)
+        
+        # Draw detections
+        for det in detections:
+            x1, y1, x2, y2 = det['bbox']
+            label = f"{det['class']}: {det['confidence']:.2f}"
+            
+            # Draw bounding box
+            cv2.rectangle(vis_frame, (x1, y1), (x2, y2), box_color, box_thickness)
+            
+            # Draw label background
+            (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_thickness)
+            cv2.rectangle(vis_frame, (x1, y1 - label_h - 10), (x1 + label_w, y1), box_color, -1)
+            
+            # Draw label text
+            cv2.putText(vis_frame, label, (x1, y1 - 5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), text_thickness)
+        
+        # Add camera name and detection count
+        info_text = f"{camera_name} | Detections: {len(detections)}"
+        cv2.putText(vis_frame, info_text, (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        return vis_frame
+    
+    def _display_frame(self, frame, camera_name):
+        """Display frame in OpenCV window"""
+        cv2.imshow(camera_name, frame)
+    
+    def _save_frame_to_video(self, frame, camera_id, camera_name):
+        """Save frame to video file"""
+        # Initialize video writer for this camera if not exists
+        if camera_id not in self.video_writers:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{camera_id}_{camera_name.replace(' ', '_')}_{timestamp}.mp4"
+            filepath = os.path.join(self.output_dir, filename)
+            
+            # Get video properties
+            height, width = frame.shape[:2]
+            fps = self.video_config.get('fps', 30)
+            codec = self.video_config.get('codec', 'mp4v')
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            
+            # Create video writer
+            writer = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
+            self.video_writers[camera_id] = writer
+            
+            logger.info(f"Created video writer for {camera_name}: {filepath}")
+        
+        # Write frame
+        self.video_writers[camera_id].write(frame)
+    
     def _process_batch(self):
         """Process batch of frames through YOLOv8"""
         if not self.pending_frames:
@@ -146,9 +258,11 @@ class BatchConsumer:
         # Prepare batch
         batch_frames = []
         frame_metadata = []
+        original_frames = []
         
         for frame_data in self.pending_frames:
             batch_frames.append(frame_data['frame'])
+            original_frames.append(frame_data['original_frame'])
             frame_metadata.append({
                 'camera_id': frame_data['camera_id'],
                 'camera_name': frame_data['camera_name'],
@@ -168,7 +282,7 @@ class BatchConsumer:
             )
             
             # Process results
-            self._handle_results(results, frame_metadata)
+            self._handle_results(results, frame_metadata, original_frames)
             
             processing_time = time.time() - batch_start_time
             logger.info(f"Processed batch of {len(batch_frames)} frames in {processing_time:.3f}s")
@@ -181,9 +295,9 @@ class BatchConsumer:
             self.pending_frames.clear()
             self.last_batch_time = time.time()
     
-    def _handle_results(self, results, frame_metadata):
+    def _handle_results(self, results, frame_metadata, original_frames):
         """Handle inference results with class and ROI filtering"""
-        for i, (result, metadata) in enumerate(zip(results, frame_metadata)):
+        for i, (result, metadata, original_frame) in enumerate(zip(results, frame_metadata, original_frames)):
             detections = []
             
             if result.boxes is not None:
@@ -227,6 +341,25 @@ class BatchConsumer:
                 for det in final_detections:
                     logger.info(f"  ✓ {det['class']}: {det['confidence']:.2f} at {det['bbox']}")
             
+            # Visualize if enabled
+            if self.visualize_mode:
+                # Resize original frame to model input size for consistent visualization
+                display_frame = cv2.resize(original_frame, self.model_input_size)
+                
+                # Draw detections on frame
+                annotated_frame = self._visualize_detections(
+                    display_frame, 
+                    final_detections, 
+                    metadata['camera_name'],
+                    metadata['roi_config']
+                )
+                
+                # Display or save based on mode
+                if self.visualize_mode == 'display':
+                    self._display_frame(annotated_frame, metadata['camera_name'])
+                elif self.visualize_mode == 'save':
+                    self._save_frame_to_video(annotated_frame, metadata['camera_id'], metadata['camera_name'])
+            
             # Send filtered results to downstream system
             self._send_results(metadata, final_detections, {
                 'total_detections': len(detections),
@@ -250,21 +383,4 @@ class BatchConsumer:
         
         # Here you can implement your result forwarding logic
         # For example: save to database, send to API, write to file, etc.
-
-        # Optional: Save detection results to file for debugging
-        if detections:
-            self._save_detection_results(result_summary)
-    
-    def _save_detection_results(self, result_summary):
-        """Optional: Save detection results for debugging/analysis"""
-        import json
-        from datetime import datetime
-        
-        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"detections_{result_summary['camera_id']}_{timestamp_str}.json"
-        
-        try:
-            with open(f"./logs/{filename}", 'w') as f:
-                json.dump(result_summary, f, indent=2)
-        except:
-            pass  # Don't fail if logging directory doesn't exist
+        pass

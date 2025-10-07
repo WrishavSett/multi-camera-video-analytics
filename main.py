@@ -3,6 +3,7 @@ import signal
 import sys
 import time
 import os
+import argparse
 from producer import FrameProducer
 from consumer import BatchConsumer
 import logging
@@ -11,10 +12,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MultiCameraAnalytics:
-    def __init__(self):
+    def __init__(self, visualize_mode=None):
         self.producer = FrameProducer()
-        self.consumer = BatchConsumer()
+        self.consumer = BatchConsumer(visualize_mode=visualize_mode)
         self.running = False
+        self.visualize_mode = visualize_mode
         
         # Create logs directory if it doesn't exist
         os.makedirs("logs", exist_ok=True)
@@ -24,7 +26,8 @@ class MultiCameraAnalytics:
     
     def start(self):
         """Start the analytics system"""
-        logger.info("Starting Multi-Camera Analytics System with ROI and Class Filtering")
+        viz_info = f" with {self.visualize_mode} mode" if self.visualize_mode else ""
+        logger.info(f"Starting Multi-Camera Analytics System with ROI and Class Filtering{viz_info}")
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -68,11 +71,52 @@ class MultiCameraAnalytics:
         queue_size = self.producer.queue_size()
         logger.info(f"Frame queue size: {queue_size}")
 
-if __name__ == "__main__":
-    app = MultiCameraAnalytics()
+def main():
+    # Setup argument parser
+    parser = argparse.ArgumentParser(
+        description='Multi-Camera Video Analytics System',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                    # Run without visualization
+  python main.py --visualize        # Display detections in OpenCV windows
+  python main.py --save             # Save annotated videos to disk
+        """
+    )
+    
+    viz_group = parser.add_mutually_exclusive_group()
+    viz_group.add_argument(
+        '--visualize',
+        action='store_true',
+        help='Display detection results in real-time OpenCV windows'
+    )
+    viz_group.add_argument(
+        '--save',
+        action='store_true',
+        help='Save detection results as video files'
+    )
+    
+    args = parser.parse_args()
+    
+    # Determine visualization mode
+    visualize_mode = None
+    if args.visualize:
+        visualize_mode = 'display'
+        logger.info("Visualization mode: Real-time display")
+    elif args.save:
+        visualize_mode = 'save'
+        logger.info("Visualization mode: Save to video files")
+    else:
+        logger.info("Visualization mode: Disabled (logging only)")
+    
+    # Initialize and start the system
+    app = MultiCameraAnalytics(visualize_mode=visualize_mode)
     
     try:
         app.start()
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
         app.stop()
+
+if __name__ == "__main__":
+    main()

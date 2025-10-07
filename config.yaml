@@ -1,44 +1,61 @@
 cameras:
   camera_1:
-    rtsp_url: "rtsp://admin:password@192.168.1.100:554/stream1"
-    name: "Front Door"
+    rtsp_url: "rtsp://Localhost:18554/mystream"
+    name: "Camera 1"
     roi:
-      enabled: true
-      coordinates: [[50, 100], [590, 200], [50, 540], [590, 540]]
-    classes_to_detect: ["person", "car", "truck", "bicycle"]
+      enabled: false
+      coordinates: []
+    classes_to_detect: ["car"]
   
   camera_2:
-    rtsp_url: "rtsp://admin:password@192.168.1.101:554/stream1"
-    name: "Back Yard"
+    rtsp_url: "rtsp://Localhost:18554/mystream"
+    name: "Camera 2"
     roi:
-      enabled: true
-      coordinates: [[0, 0], [640, 0], [640, 400], [0, 400]]
-    classes_to_detect: ["person", "dog", "cat", "bird"]
+      enabled: false
+      coordinates: []
+    classes_to_detect: ["car"]
     
-  camera_3:
-    rtsp_url: "rtsp://admin:password@192.168.1.102:554/stream1"
-    name: "Parking"
-    roi:
-      enabled: false
-      coordinates: []
-    classes_to_detect: ["car", "truck", "bus", "motorcycle"]
+  # camera_3:
+  #   rtsp_url: "rtsp://admin:password@192.168.1.102:554/stream1"
+  #   name: "Parking"
+  #   roi:
+  #     enabled: false
+  #     coordinates: []
+  #   classes_to_detect: ["car", "truck", "bus", "motorcycle"]
 
-  camera_4:
-    rtsp_url: "rtsp://admin:password@192.168.1.103:554/stream1"
-    name: "General Area"
-    roi:
-      enabled: false
-      coordinates: []
-    classes_to_detect: []
+  # camera_4:
+  #   rtsp_url: "rtsp://admin:password@192.168.1.103:554/stream1"
+  #   name: "General Area"
+  #   roi:
+  #     enabled: false
+  #     coordinates: []
+  #   classes_to_detect: []
 
 # Batch processing settings
-batch_size: 4
-batch_timeout: 0.1
+batch_size: 2
+batch_timeout: 0.25
 target_fps: 30
 frame_queue_size: 100
 
 # Model settings
-model_path: "./models/yolov8l.pt"
+model_path: "./models/yolov8s.pt"
 confidence_threshold: 0.5
-device: "cuda"
+device: "cpu"  # or "cuda" for GPU
 model_input_size: [640, 640]
+
+# Visualization settings
+visualization:
+  box_color: [0, 255, 0]  # Green in BGR
+  box_thickness: 2
+  text_color: [0, 255, 0]  # Green in BGR
+  text_thickness: 2
+  font_scale: 0.6
+  show_roi: true  # Draw ROI polygon on visualized frames
+  roi_color: [255, 0, 0]  # Blue in BGR
+  roi_thickness: 2
+  
+# Video saving settings
+video_save:
+  codec: "mp4v"  # or "XVID", "MJPG"
+  fps: 30
+  output_dir: "./output_videos"
