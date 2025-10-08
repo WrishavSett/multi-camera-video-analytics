@@ -7,6 +7,7 @@ import cv2
 import logging
 import os
 from datetime import datetime
+import threading
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,7 +44,8 @@ class BatchConsumer:
         
         self.pending_frames = []
         self.last_batch_time = time.time()
-        self.running = False
+        self.running = threading.Event()
+        self.running.clear()
         
         logger.info(f"Model loaded on {self.device}")
         logger.info(f"Model input size: {self.model_input_size}")
@@ -52,10 +54,10 @@ class BatchConsumer:
     
     def start(self, producer):
         """Start consuming frames from producer"""
-        self.running = True
+        self.running.set()
         self.producer = producer
         
-        while self.running:
+        while self.running.is_set():
             # Collect frames for batch
             self._collect_frames()
             
@@ -71,7 +73,7 @@ class BatchConsumer:
     
     def stop(self):
         """Stop the consumer"""
-        self.running = False
+        self.running.clear()
         
         # Process any remaining frames
         if self.pending_frames:
