@@ -1,7 +1,7 @@
 import cv2
 import time
 import threading
-from queue import Queue
+from queue import Queue, Empty
 import yaml
 import logging
 import numpy as np
@@ -17,18 +17,18 @@ class FrameProducer:
         self.frame_queue = Queue(maxsize=self.config['frame_queue_size'])
         self.cameras = {}
         self.capture_threads = {}
-        self.running = False
+        self.running = threading.Event()
+        self.running.clear()
         self.model_input_size = tuple(self.config['model_input_size'])
         
     def start(self):
         """Start all camera capture threads"""
-        self.running = True
+        self.running.set()
         
         for camera_id, camera_config in self.config['cameras'].items():
             thread = threading.Thread(
                 target=self._capture_frames,
-                args=(camera_id, camera_config),
-                daemon=True
+                args=(camera_id, camera_config)
             )
             self.capture_threads[camera_id] = thread
             thread.start()
@@ -38,7 +38,11 @@ class FrameProducer:
     
     def stop(self):
         """Stop all capture threads"""
-        self.running = False
+        self.running.clear()
+
+        # Wait for all threads to finish
+        for thread in self.capture_threads.values():
+            thread.join()
         
         # Close all captures
         for cap in self.cameras.values():
@@ -101,43 +105,49 @@ class FrameProducer:
         logger.info(f"Camera {camera_id} - ROI: {camera_config['roi']['enabled']}, "
                    f"Classes: {camera_config['classes_to_detect'] if camera_config['classes_to_detect'] else 'all'}")
         
-        while self.running:
-            ret, frame = cap.read()
-            if not ret:
-                logger.warning(f"Failed to read from {camera_id}")
-                time.sleep(0.1)
-                continue
-            
-            current_time = time.time()
-            
-            # Frame rate control
-            if current_time - last_time >= frame_interval:
-                # Preprocess frame (resize + ROI)
-                processed_frame = self._preprocess_frame(frame, camera_config)
+        try:
+            while self.running.is_set():
+                ret, frame = cap.read()
+                if not ret:
+                    logger.warning(f"Failed to read from {camera_id}")
+                    time.sleep(0.1)
+                    continue
                 
-                frame_data = {
-                    'camera_id': camera_id,
-                    'camera_name': camera_config['name'],
-                    'frame': processed_frame,
-                    'original_frame': frame,
-                    'roi_config': camera_config['roi'],
-                    'classes_to_detect': camera_config['classes_to_detect'],
-                    'timestamp': current_time
-                }
+                current_time = time.time()
                 
-                try:
-                    # Non-blocking put, drop frame if queue is full
-                    self.frame_queue.put_nowait(frame_data)
-                except:
-                    pass  # Drop frame if queue is full
-                
-                last_time = current_time
+                # Frame rate control
+                if current_time - last_time >= frame_interval:
+                    # Preprocess frame (resize + ROI)
+                    processed_frame = self._preprocess_frame(frame, camera_config)
+                    
+                    frame_data = {
+                        'camera_id': camera_id,
+                        'camera_name': camera_config['name'],
+                        'frame': processed_frame,
+                        'original_frame': frame,
+                        'roi_config': camera_config['roi'],
+                        'classes_to_detect': camera_config['classes_to_detect'],
+                        'timestamp': current_time
+                    }
+                    
+                    try:
+                        # Non-blocking put, drop frame if queue is full
+                        self.frame_queue.put_nowait(frame_data)
+                    except:
+                        pass  # Drop frame if queue is full
+                    
+                    last_time = current_time
+
+                time.sleep(0.001)
+
+        finally:
+            cap.release()
     
     def get_frame(self):
         """Get next frame from queue"""
         try:
             return self.frame_queue.get_nowait()
-        except:
+        except Empty:
             return None
     
     def queue_size(self):
