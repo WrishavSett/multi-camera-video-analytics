@@ -1,0 +1,110 @@
+# Camera settings
+cameras:
+  camera_1:
+    rtsp_url: "rtsp://localhost:18554/mystream"
+    name: "Camera 1"
+  
+  camera_2:
+    rtsp_url: "rtsp://localhost:18554/mystream"
+    name: "Camera 2"
+
+# Common settings
+frame_queue_size: 100
+target_fps: 8
+
+# Model settings
+model_name: "yolov8n_smoke_detection.pt" # Use your trained smoke model
+classes_to_track: ["smoke"]
+confidence_threshold: 0.5
+model_input_size: [854, 480]
+
+# --- NEW SECTIONS ---
+
+# Notification settings
+notification_cooldown: 300  # Cooldown in seconds (e.g., 300s = 5 minutes) before re-notifying for the same track
+
+# Regions of Interest (ROIs) for chimneys, grouped by camera
+# Coordinates are [x1, y1, x2, y2] for each chimney's bounding box
+regions_of_interest:
+  camera_1:
+    chimney_1: [100, 50, 150, 200]
+    chimney_2: [200, 50, 250, 200]
+    chimney_3: [300, 50, 350, 200]
+    chimney_4: [400, 50, 450, 200]
+    chimney_5: [500, 50, 550, 200]
+    chimney_6: [600, 50, 650, 200]
+  camera_2:
+    chimney_7: [100, 50, 150, 200]
+    chimney_8: [200, 50, 250, 200]
+    chimney_9: [300, 50, 350, 200]
+    chimney_10: [400, 50, 450, 200]
+    chimney_11: [500, 50, 550, 200]
+    chimney_12: [600, 50, 650, 200]
+
+# Email settings for notifications
+email_notifications:
+  enabled: true
+  smtp_server: "smtp.example.com"
+  smtp_port: 465 # For SSL
+  sender_email: "your_email@example.com"
+  password: "your_app_password"
+  recipients:
+    - "recipient1@example.com"
+    - "recipient2@example.com"
+
+# --- END NEW SECTIONS ---
+
+# Visualization settings
+visualization:
+  box_color: [0, 0, 255] # Red for smoke
+  box_thickness: 2
+  text_color: [0, 0, 255]
+  text_thickness: 2
+  font_scale: 0.6
+  show_roi_boxes: true
+  roi_color: [0, 255, 255] # Yellow for ROIs
+  roi_thickness: 1
+  
+# Video saving settings
+video_save:
+  codec: "mp4v"
+  fps: 8
+
+# Path configuration
+paths:
+  model_dir: "./models"
+  log_dir: "./logs"
+  output_video_dir: "./output_videos"
+
+# Producer settings
+producer:
+  reconnect_max_retries: 10
+  reconnect_base_delay: 1.0  # seconds
+  reconnect_max_delay: 60.0  # seconds
+  reconnect_backoff_factor: 2.0
+
+# Health monitoring
+health_api:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+
+# --- Device-specific Profiles ---
+profiles:
+  cpu:
+    device: "cpu"
+    batch_size: 4
+    batch_timeout: 1
+    consumer:
+      mode: "cpu"
+      enable_parallel: true
+      max_workers: 4
+
+  gpu:
+    device: "cuda"
+    batch_size: 8
+    batch_timeout: 0.5
+    consumer:
+      mode: "gpu"
+      enable_parallel: false
+      max_workers: 1
